@@ -2,10 +2,13 @@
  * @file interrupts.cpp
  * @author Sasisekhar Govind
  * @brief template main.cpp file for Assignment 3 Part 1 of SYSC4001
+ * @author Armeena Sajjad
+ * @author Salma Khai
  * 
  */
 
-#include<interrupts_student1_student2.hpp>
+#include<interrupts_101295773_101301357.hpp>
+#include<unordered_map>
 
 void FCFS(std::vector<PCB> &ready_queue) {
     std::sort( 
@@ -17,7 +20,12 @@ void FCFS(std::vector<PCB> &ready_queue) {
             );
 }
 
-std::tuple<std::string /* add std::string for bonus mark */ > run_simulation(std::vector<PCB> list_processes) {
+// Round Robin will just follow queue order
+static void RoundRobin(std::vector<PCB> &ready_queue) {
+    // ready_queue already behaves like a FIFO for RR
+}
+
+std::tuple<std::string, std::string /* add std::string for bonus mark */ > run_simulation(std::vector<PCB> list_processes) {
 
     std::vector<PCB> ready_queue;   //The ready queue of processes
     std::vector<PCB> wait_queue;    //The wait queue of processes
@@ -33,6 +41,25 @@ std::tuple<std::string /* add std::string for bonus mark */ > run_simulation(std
     idle_CPU(running);
 
     std::string execution_status;
+    std::string memory_status;
+
+    // keep IO timing info for each PID
+    std::unordered_map<int,unsigned int> cpu_to_next_io;
+    std::unordered_map<int,unsigned int> io_time_remaining;
+
+    for (auto &p : list_processes) {
+        cpu_to_next_io[p.PID] = (p.io_freq > 0 ? p.io_freq : 0);
+        io_time_remaining[p.PID] = 0;
+    }
+
+    const unsigned int TIME_QUANTUM = 100;
+    unsigned int quantum_left = 0;
+
+    // total memory in all fixed partitions
+    unsigned int total_memory = 0;
+    for (const auto &part : memory_paritions) {
+        total_memory += part.size;
+    }
 
     //make the output table (the header row)
     execution_status = print_exec_header();
@@ -49,33 +76,160 @@ std::tuple<std::string /* add std::string for bonus mark */ > run_simulation(std
         //Population of ready queue is given to you as an example.
         //Go through the list of proceeses
         for(auto &process : list_processes) {
-            if(process.arrival_time == current_time) {//check if the AT = current time
+            if(process.arrival_time <= current_time && process.state == NOT_ASSIGNED) {//check if the AT = current time
                 //if so, assign memory and put the process into the ready queue
-                assign_memory(process);
+                if (assign_memory(process)) {
 
-                process.state = READY;  //Set the process state to READY
-                ready_queue.push_back(process); //Add the process to the ready queue
-                job_list.push_back(process); //Add it to the list of processes
+                    process.state = READY;  //Set the process state to READY
+                    ready_queue.push_back(process); //Add the process to the ready queue
+                    job_list.push_back(process); //Add it to the list of processes
 
-                execution_status += print_exec_status(current_time, process.PID, NEW, READY);
+                    execution_status += print_exec_status(current_time, process.PID, NEW, READY);
+
+                    // record memory status every time a process is admitted
+                    unsigned int used_by_processes = 0;
+                    for (const auto &p : job_list) {
+                        if (p.state != TERMINATED && p.partition_number != -1) {
+                            used_by_processes += p.size;
+                        }
+                    }
+
+                    unsigned int total_free_memory = total_memory - used_by_processes;
+
+                    unsigned int usable_memory = 0;
+                    std::string used_parts, free_parts;
+                    for (const auto &part : memory_paritions) {
+                        if (part.occupied == -1) {
+                            usable_memory += part.size;
+                            if (!free_parts.empty()) free_parts += ",";
+                            free_parts += std::to_string(part.partition_number);
+                        } else {
+                            if (!used_parts.empty()) used_parts += ",";
+                            used_parts += std::to_string(part.partition_number);
+                        }
+                    }
+
+                    memory_status += "Time " + std::to_string(current_time)
+                                   + " PID " + std::to_string(process.PID)
+                                   + " started in partition " + std::to_string(process.partition_number) + "\n";
+                    memory_status += "  Total memory used by processes: " + std::to_string(used_by_processes) + " Mb\n";
+                    memory_status += "  Total free memory (including internal fragments): " + std::to_string(total_free_memory) + " Mb\n";
+                    memory_status += "  Usable free memory in free partitions: " + std::to_string(usable_memory) + " Mb\n";
+                    memory_status += "  Used partitions: " + (used_parts.empty() ? std::string("none") : used_parts) + "\n";
+                    memory_status += "  Free partitions: " + (free_parts.empty() ? std::string("none") : free_parts) + "\n\n";
+                }
             }
         }
 
         ///////////////////////MANAGE WAIT QUEUE/////////////////////////
         //This mainly involves keeping track of how long a process must remain in the ready queue
 
+        for (auto it = wait_queue.begin(); it != wait_queue.end(); ) {
+            int pid = it->PID;
+
+            if (io_time_remaining[pid] > 0) {
+                io_time_remaining[pid]--;
+            }
+
+            if (io_time_remaining[pid] == 0) {
+                states old_state = WAITING;
+                it->state = READY;
+                ready_queue.push_back(*it);
+
+                cpu_to_next_io[pid] = it->io_freq;
+
+                sync_queue(job_list, *it);
+                execution_status += print_exec_status(current_time, it->PID, old_state, READY);
+
+                it = wait_queue.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
         /////////////////////////////////////////////////////////////////
 
         //////////////////////////SCHEDULER//////////////////////////////
-        FCFS(ready_queue); //example of FCFS is shown here
+        RoundRobin(ready_queue); //example of FCFS is shown here
+
+        // dispatch when CPU is idle
+        if (running.state == NOT_ASSIGNED && !ready_queue.empty()) {
+            PCB next = ready_queue.front();
+            ready_queue.erase(ready_queue.begin());
+
+            states old_state = READY;
+            next.state = RUNNING;
+            if (next.start_time == -1) {
+                next.start_time = current_time;
+            }
+            running = next;
+
+            sync_queue(job_list, running);
+            execution_status += print_exec_status(current_time, running.PID, old_state, RUNNING);
+
+            quantum_left = TIME_QUANTUM;
+        }
         /////////////////////////////////////////////////////////////////
 
+        if (running.state == RUNNING) {
+            int pid = running.PID;
+
+            if (running.remaining_time > 0) {
+                running.remaining_time--;
+            }
+
+            if (running.io_freq > 0 && cpu_to_next_io[pid] > 0) {
+                cpu_to_next_io[pid]--;
+            }
+
+            if (quantum_left > 0) {
+                quantum_left--;
+            }
+
+            sync_queue(job_list, running);
+
+            // finished CPU work
+            if (running.remaining_time == 0) {
+                states old_state = RUNNING;
+                terminate_process(running, job_list);
+                execution_status += print_exec_status(current_time, pid, old_state, TERMINATED);
+                idle_CPU(running);
+                quantum_left = 0;
+            }
+            // request IO
+            else if (running.io_freq > 0 && cpu_to_next_io[pid] == 0) {
+                states old_state = RUNNING;
+                running.state = WAITING;
+
+                io_time_remaining[pid] = running.io_duration;
+
+                sync_queue(job_list, running);
+                execution_status += print_exec_status(current_time, pid, old_state, WAITING);
+
+                wait_queue.push_back(running);
+                idle_CPU(running);
+                quantum_left = 0;
+            }
+            // quantum expired, preempt and send process back to ready queue
+            else if (quantum_left == 0) {
+                states old_state = RUNNING;
+                running.state = READY;
+
+                sync_queue(job_list, running);
+                execution_status += print_exec_status(current_time, pid, old_state, READY);
+
+                ready_queue.push_back(running);
+                idle_CPU(running);
+            }
+        }
+
+        current_time++;
     }
     
     //Close the output table
     execution_status += print_exec_footer();
 
-    return std::make_tuple(execution_status);
+    return std::make_tuple(execution_status, memory_status);
 }
 
 
@@ -111,9 +265,11 @@ int main(int argc, char** argv) {
     input_file.close();
 
     //With the list of processes, run the simulation
-    auto [exec] = run_simulation(list_process);
+    auto [exec, mem_status] = run_simulation(list_process);
 
     write_output(exec, "execution.txt");
+    write_output(mem_status, "memory_status.txt");
 
     return 0;
 }
+
