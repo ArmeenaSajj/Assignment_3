@@ -1,0 +1,35 @@
+Time 0 PID 1 started in partition 3
+  Total memory used by processes: 12 Mb
+  Total free memory (including internal fragments): 88 Mb
+  Usable free memory in free partitions: 85 Mb
+  Used partitions: 3
+  Free partitions: 1,2,4,5,6
+
+Time 10 PID 2 started in partition 2
+  Total memory used by processes: 24 Mb
+  Total free memory (including internal fragments): 76 Mb
+  Usable free memory in free partitions: 60 Mb
+  Used partitions: 2,3
+  Free partitions: 1,4,5,6
+
+Time 20 PID 3 started in partition 1
+  Total memory used by processes: 36 Mb
+  Total free memory (including internal fragments): 64 Mb
+  Usable free memory in free partitions: 20 Mb
+  Used partitions: 1,2,3
+  Free partitions: 4,5,6
+
+Time 162 PID 4 started in partition 3
+  Total memory used by processes: 36 Mb
+  Total free memory (including internal fragments): 64 Mb
+  Usable free memory in free partitions: 20 Mb
+  Used partitions: 1,2,3
+  Free partitions: 4,5,6
+
+Time 251 PID 5 started in partition 2
+  Total memory used by processes: 36 Mb
+  Total free memory (including internal fragments): 64 Mb
+  Usable free memory in free partitions: 20 Mb
+  Used partitions: 1,2,3
+  Free partitions: 4,5,6
+
