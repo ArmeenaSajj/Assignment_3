@@ -1,7 +1,0 @@
-Time 30 PID 3 started in partition 1
-  Total memory used by processes: 30 Mb
-  Total free memory (including internal fragments): 70 Mb
-  Usable free memory in free partitions: 60 Mb
-  Used partitions: 1
-  Free partitions: 2,3,4,5,6
-
